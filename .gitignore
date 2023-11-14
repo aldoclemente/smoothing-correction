@@ -1,0 +1,11 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.RData
+*.pdf
+*.png
+data/
+output/
+pictures/
+smoothing-correction.Rproj
