@@ -1,9 +1,10 @@
 pacman::p_load("fdaPDE","dplyr", "webshot", "plotly","mvtnorm", "RColorBrewer")
 options(warn = -1)
 Sys.setenv(OPENSSL_CONF="/dev/null")
-source("helper_functions.R")
-source("plot.R")
+
 source("parameters.R")
+source("../DensityEstimation/helper_functions.R")
+source("../DensityEstimation/plot.R")
 
 # L2-norm of the Error (without and with correction terms)
 err_nocorr <- vector(mode = 'list', length = length(L))
@@ -12,7 +13,7 @@ err_nocorr <- vector(mode = 'list', length = length(L))
 CVerr_nocorr <- vector(mode = 'list', length = length(L))
 
 ## SOLUTION WITHOUT CORRECTION TERMS -------------------------------------------
-library("fdaPDE")
+set.seed(0)
 
 cat("##### SOLUTION WITHOUT CORRECTION TERMS #####\n")
 for(l in 1:length(L)){
@@ -47,7 +48,7 @@ for(l in 1:length(L)){
   mesh.eval <- create.mesh.2D(grid)
   mesh.eval <- refine.mesh.2D(mesh.eval, maximum_area = L[l]^2/n, minimum_angle = 20)
   FEMbasis.eval <- create.FEM.basis(mesh.eval)
-
+  
   # True Density
   true_density <- dens.func(mesh.eval$nodes, xrange, yrange)
   
@@ -60,18 +61,16 @@ for(l in 1:length(L)){
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/sample"), showWarnings = FALSE)
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/mesh"), showWarnings = FALSE)
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/true_density"), showWarnings = FALSE)
-    dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/true_density"), showWarnings = FALSE)
   }
-  
+   
   if(!dir.exists(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/no_correction"))){
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/no_correction"), showWarnings = FALSE)
   }else{
     next
   }
   
-  if(!dir.exists("output")){
+  if(!dir.exists("output"))
     dir.create("output", showWarnings = FALSE)
-  }
   
   for(i in 1:length(lambdas)){
     
@@ -87,17 +86,19 @@ for(l in 1:length(L)){
       # Smoothing Parameter
       lambda <- lambdas[i]
       
+      # observations 
+      observations <- dens.func(data, xrange, yrange) + rnorm(nrow(data), 
+                                                              sd = 0.05* diff(range(true_density)))
       # Solution (without correction terms)
       invisible(capture.output(
-        solution_DEPDE_nocorr <- DE.FEM(data, FEMbasis, lambda, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                        stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = NULL,
-                                        nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                        preprocess_method = "NoCrossValidation", search = "tree")
+        solution_SRPDE_nocorr <- smooth.FEM(observations=observations, locations = data,
+                                            FEMbasis=FEMbasis, 
+                                            lambda=lambda)
       ))
       
       # Evaluation
-      FEM_DEPDE_nocorr <- FEM(exp(solution_DEPDE_nocorr$g), FEMbasis)
-      solution_nocorr <- eval.FEM(FEM_DEPDE_nocorr, mesh.eval$nodes)
+      FEM_SRPDE_nocorr <- solution_SRPDE_nocorr$fit.FEM
+      solution_nocorr <- eval.FEM(FEM_SRPDE_nocorr, mesh.eval$nodes)
       
       # Error
       err_nocorr[[l]][proc,i] <- sum(fdaPDE:::CPP_get.FEM.Mass.Matrix(FEMbasis.eval) %*% (solution_nocorr - true_density)^2)
@@ -128,27 +129,29 @@ for(l in 1:length(L)){
         # Plot of the Density Estimate
         plotname <- paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/no_correction/no_correction_lambda_", i)
         if(!file.exists(plotname)){
-          plot(FEM(solution_nocorr, FEMbasis.eval), colormap = "jet.col",
+          plot(FEM(solution_corr, FEMbasis.eval), colormap = "jet.col",
                m = min(true_density), M = max(true_density), filename = plotname)
         }
         plotname <- paste0(plotname, "_image")
         if(!file.exists(plotname)){
-          image(FEM(solution_nocorr, FEMbasis.eval), colormap = "jet.col",
+          image(FEM(solution_corr, FEMbasis.eval), colormap = "jet.col",
                 m = min(true_density), M = max(true_density), filename = plotname)
         }
         t2 <- proc.time()
         
         # Cross-Validation Errors
         invisible(capture.output(
-          solution_DEPDE_nocorr <- DE.FEM(data, FEMbasis, lambdas, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                          stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = 10,
-                                          nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                          preprocess_method = "RightCV", search = "tree")
+          solution_SRPDE_corr <- smooth.FEM(observations=observations, locations=data, 
+                                            FEMbasis=FEMbasis, 
+                                            lambda=lambdas, 
+                                            lambda.selection.criterion='grid', 
+                                            DOF.evaluation='exact', 
+                                            lambda.selection.lossfunction='GCV')
         ))
         
-        CVerr_nocorr[[l]] <- solution_DEPDE_nocorr$CV_err
+        CVerr_nocorr[[l]] <- solution_SRPDE_nocorr$optimization$GCV_vector
         
-        cat(paste("CV errors computed in", round((proc.time()-t2)[3],2), "seconds.\n"))
+        cat(paste("GCV errors computed in", round((proc.time()-t2)[3],2), "seconds.\n"))
         
       }
       

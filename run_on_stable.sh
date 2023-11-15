@@ -13,8 +13,13 @@ apt-get install -y libgl1-mesa-dev libglu1-mesa-dev
 apt-get install -y libxml2-dev
 apt-get install -y libssl-dev
 
-cd /root/smoothing-correction/DensityEstimation/ 
-Rscript ../dependencies.R 
+cd /root/smoothing-correction/ 
+Rscript dependencies.R
+
+cd DensityEstimation/
+Rscript run_on_stable.R
+
+cd ../SpatialRegression/
 Rscript run_on_stable.R
 
 exit

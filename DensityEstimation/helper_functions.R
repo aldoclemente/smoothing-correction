@@ -101,11 +101,12 @@ generate.data <- function(N, proc, xrange, yrange){
     
   }
   if(!dir.exists(file.path(getwd(), 
-                           paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/")))){
+                           paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/"))))
     dir.create(file.path(getwd(), 
                          paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/")), showWarnings = FALSE)
     
   
+  if(!file.exists(paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/",N,"data_",proc,".txt"))){
   set.seed(100+proc)
   
   length <- diff(xrange)

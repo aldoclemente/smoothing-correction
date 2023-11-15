@@ -1,33 +1,28 @@
-library(dplyr)        # for function: between
-library(webshot)      # for function: snapshot3d
-library(plotly)       # for plots
-if(!require(fdaPDE)){
-  devtools::install_github(repo="simonepanzeri/fdaPDE") #, ref="master")
-}
+pacman::p_load("fdaPDE","dplyr", "webshot", "plotly","mvtnorm", "RColorBrewer")
+options(warn = -1)
+Sys.setenv(OPENSSL_CONF="/dev/null")
 
-source("helper_functions.R")
-source("plot.R")
 source("parameters.R")
+source("../DensityEstimation/helper_functions.R")
+source("../DensityEstimation/plot.R")
 
-# L2-norm of the Error (without and with correction terms)
+# L2-norm of the Error (with correction terms)
 err_corr <- vector(mode = 'list', length = length(L))
-err_ricorr <- vector(mode = 'list', length = length(L))
 
 # Cross-Validation Errors
 CVerr_corr <- vector(mode = 'list', length = length(L))
-CVerr_ricorr <- vector(mode = 'list', length = length(L))
 
-## SOLUTION WITH CORRECTION TERMS ----------------------------------------------
-library("fdaPDE", quietly = TRUE)
+## SOLUTION WITHOUT CORRECTION TERMS -------------------------------------------
+set.seed(0)
 
-print("##### SOLUTION WITH CORRECTION TERMS #####")
+cat("##### SOLUTION WITHOUT CORRECTION TERMS #####\n")
 for(l in 1:length(L)){
   
   # Range
   xrange <- c(0,L[l])
   yrange <- c(0,L[l])
-  
-  # L2-norm of the Error (without and with correction terms)
+  cat("--------- ", "[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]"  ," ---------\n")
+  # L2-norm of the Error (without correction terms)
   err_corr[[l]] <- matrix(nrow = processes, ncol = length(lambdas))
   
   # Cross-Validation Error
@@ -61,11 +56,13 @@ for(l in 1:length(L)){
   if(!dir.exists("pictures"))
     dir.create("pictures", showWarnings = FALSE)
   
+  if(!dir.exists("output"))
+    dir.create("output", showWarnings = FALSE)
+  
   if(!dir.exists(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]"))){
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]"), showWarnings = FALSE)
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/sample"), showWarnings = FALSE)
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/mesh"), showWarnings = FALSE)
-    dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/true_density"), showWarnings = FALSE)
     dir.create(paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/true_density"), showWarnings = FALSE)
   }
   
@@ -75,52 +72,36 @@ for(l in 1:length(L)){
     next
   }
   
-  if(!dir.exists("output")){
-    dir.create("output", showWarnings = FALSE)
-  }
-  
   for(i in 1:length(lambdas)){
     
     t0 <- proc.time()
-    
     for(proc in 1:processes){
-      
       t1 <- proc.time()
-      
       # Generate the Data
       generate.data(N, proc, xrange, yrange)
       
       # Read the Data
-      read.table(paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/",N,"data_",proc,".txt"))
+      data <- read.table(paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/",N,"data_",proc,".txt"))
       
       # Smoothing Parameter
-      lambda <- lambdas[i]
+      lambda <- lambdas[i] / domain_area
       
-      # Solution (with correction terms)
+      # observations 
+      observations <- dens.func(data, xrange, yrange) + rnorm(nrow(data), 
+                                                              sd = 0.05* diff(range(true_density)))
+      # Solution (without correction terms)
       invisible(capture.output(
-        solution_DEPDE_corr <- DE.FEM(data, FEMbasis, lambda, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                      stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = NULL,
-                                      nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                      preprocess_method = "NoCrossValidation", search = "tree")
-      ))
-      
-      invisible(capture.output(
-        solution_DEPDE_ricorr <- DE.FEM(data, FEMbasis, lambda*domain_area, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                        stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = NULL,
-                                        nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                        preprocess_method = "NoCrossValidation", search = "tree")
+        solution_SRPDE_corr <- smooth.FEM(observations=observations, locations = data,
+                                            FEMbasis=FEMbasis, 
+                                            lambda=lambda)
       ))
       
       # Evaluation
-      FEM_DEPDE_corr <- FEM(exp(solution_DEPDE_corr$g)/domain_area, FEMbasis)
-      solution_corr <- eval.FEM(FEM_DEPDE_corr, mesh.eval$nodes)
-      
-      # True Density
-      true_density <- dens.func(data[,1], data[,2], xrange, yrange)
+      FEM_SRPDE_corr <- solution_SRPDE_corr$fit.FEM
+      solution_corr <- eval.FEM(FEM_SRPDE_corr, mesh.eval$nodes)
       
       # Error
       err_corr[[l]][proc,i] <- sum(fdaPDE:::CPP_get.FEM.Mass.Matrix(FEMbasis.eval) %*% (solution_corr - true_density)^2)
-      err_ricorr[[l]][proc,i] <- sum(fdaPDE:::CPP_get.FEM.Mass.Matrix(FEMbasis.eval) %*% (solution_ricorr - true_density)^2)
       
       if(proc == 1){
         # Plot of the True Estimate
@@ -160,39 +141,26 @@ for(l in 1:length(L)){
         
         # Cross-Validation Errors
         invisible(capture.output(
-          solution_DEPDE_corr <- DE.FEM(data, FEMbasis, lambdas, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                        stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = 10,
-                                        nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                        preprocess_method = "RightCV", search = "tree")
+          solution_SRPDE_corr <- smooth.FEM(observations=observations, locations=data, 
+                                              FEMbasis=FEMbasis, 
+                                              lambda=lambdas, 
+                                              lambda.selection.criterion='grid', 
+                                              DOF.evaluation='exact', 
+                                              lambda.selection.lossfunction='GCV')
         ))
         
-        CVerr_corr[[l]] <- solution_DEPDE_corr$CV_err
+        CVerr_corr[[l]] <- solution_SRPDE_corr$optimization$GCV_vector
         
-        invisible(capture.output(
-          solution_DEPDE_ricorr <- DE.FEM(data, FEMbasis, lambdas*domain_area, fvec = NULL, heatStep = 0.1, heatIter = 500, 
-                                          stepProposals = NULL, tol1 = 1e-5, tol2 = 0, print = FALSE, nfolds = 10,
-                                          nsimulations = 10000, step_method = "Fixed_Step", direction_method = "L-BFGS5",
-                                          preprocess_method = "RightCV", search = "tree")
-        ))
-        
-        CVerr_ricorr[[l]] <- solution_DEPDE_ricorr$CV_err
-        
-        print(paste("CV errors computed in", round((proc.time()-t2)[3],2), "seconds."))
+        cat(paste("GCV errors computed in", round((proc.time()-t2)[3],2), "seconds.\n"))
         
       }
       
-      print(paste("Process", proc, "for lambda", i, "done in", round((proc.time()-t1)[3],2), "seconds."))
-      
+      cat(paste("Process", proc, "for lambda", i, "done in", round((proc.time()-t1)[3],2), "seconds.\n"))
     }
-    
-    print(paste(processes, "processes for lambda", i, "done in", round((proc.time()-t0)[3],2), "seconds."))
-    
+    cat(paste(processes, "processes for lambda", i, "done in", round((proc.time()-t0)[3],2), "seconds.\n"))
   }
-  
-  print(paste("##### L =", L[l], "DONE #####"))
-  
 }
 
-save(lambdas,  err_corr, 
-     CVerr_corr, L, 
-     file = paste0("output/errors.RData"))
+save(lambdas, err_corr,
+     CVerr_corr, L,
+     L, file = paste0("output/errors_corr.RData"))
