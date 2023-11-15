@@ -6,7 +6,7 @@ N <- 1000
 processes <- 30
 
 # Smoothing Parameters
-lambdas <- 10^seq(from = -3, to = 3, length.out = 20)
+lambdas <- 10^seq(from = -5, to = 5, length.out = 50)
 #lambdas <- c(0.1, 0.01)
 
 # Side Lengths

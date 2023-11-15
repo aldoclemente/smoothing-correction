@@ -93,7 +93,7 @@ for(l in 1:length(L)){
       invisible(capture.output(
         solution_SRPDE_corr <- smooth.FEM(observations=observations, locations = data,
                                             FEMbasis=FEMbasis, 
-                                            lambda=lambda)
+                                            lambda=lambda*N)
       ))
       
       # Evaluation
@@ -143,7 +143,7 @@ for(l in 1:length(L)){
         invisible(capture.output(
           solution_SRPDE_corr <- smooth.FEM(observations=observations, locations=data, 
                                               FEMbasis=FEMbasis, 
-                                              lambda=lambdas, 
+                                              lambda=lambdas/domain_area*N, 
                                               lambda.selection.criterion='grid', 
                                               DOF.evaluation='exact', 
                                               lambda.selection.lossfunction='GCV')

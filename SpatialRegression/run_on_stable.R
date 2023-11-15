@@ -93,7 +93,7 @@ for(l in 1:length(L)){
       invisible(capture.output(
         solution_SRPDE_nocorr <- smooth.FEM(observations=observations, locations = data,
                                             FEMbasis=FEMbasis, 
-                                            lambda=lambda)
+                                            lambda=lambda*N)
       ))
       
       # Evaluation
@@ -129,12 +129,12 @@ for(l in 1:length(L)){
         # Plot of the Density Estimate
         plotname <- paste0("pictures/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/no_correction/no_correction_lambda_", i)
         if(!file.exists(plotname)){
-          plot(FEM(solution_corr, FEMbasis.eval), colormap = "jet.col",
+          plot(FEM(solution_nocorr, FEMbasis.eval), colormap = "jet.col",
                m = min(true_density), M = max(true_density), filename = plotname)
         }
         plotname <- paste0(plotname, "_image")
         if(!file.exists(plotname)){
-          image(FEM(solution_corr, FEMbasis.eval), colormap = "jet.col",
+          image(FEM(solution_nocorr, FEMbasis.eval), colormap = "jet.col",
                 m = min(true_density), M = max(true_density), filename = plotname)
         }
         t2 <- proc.time()
@@ -143,7 +143,7 @@ for(l in 1:length(L)){
         invisible(capture.output(
           solution_SRPDE_corr <- smooth.FEM(observations=observations, locations=data, 
                                             FEMbasis=FEMbasis, 
-                                            lambda=lambdas, 
+                                            lambda=lambdas *N, 
                                             lambda.selection.criterion='grid', 
                                             DOF.evaluation='exact', 
                                             lambda.selection.lossfunction='GCV')
