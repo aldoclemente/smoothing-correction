@@ -3,7 +3,8 @@ options(warn = -1)
 Sys.setenv(OPENSSL_CONF="/dev/null")
 
 source("parameters.R")
-source("../DensityEstimation/helper_functions.R")
+source("helper_functions.R")
+#source("../DensityEstimation/helper_functions.R")
 source("../DensityEstimation/plot.R")
 
 # L2-norm of the Error (with correction terms)
@@ -78,17 +79,17 @@ for(l in 1:length(L)){
     for(proc in 1:processes){
       t1 <- proc.time()
       # Generate the Data
-      generate.data(N, proc, xrange, yrange)
+      generate.data.regr(N, proc, xrange, yrange)
       
       # Read the Data
-      data <- read.table(paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/",N,"data_",proc,".txt"))
+      data.regr <- read.table(paste0("data/[",xrange[1],",",xrange[2],"]x[",yrange[1],",",yrange[2],"]/",N,"data_",proc,".txt"))
+      
+      data <- data.regr[,1:2]
+      observations <- data.regr[,3]
       
       # Smoothing Parameter
       lambda <- lambdas[i] / domain_area
       
-      # observations 
-      observations <- dens.func(data, xrange, yrange) + rnorm(nrow(data), 
-                                                              sd = 0.05* diff(range(true_density)))
       # Solution (without correction terms)
       invisible(capture.output(
         solution_SRPDE_corr <- smooth.FEM(observations=observations, locations = data,
